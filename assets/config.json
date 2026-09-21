@@ -1,0 +1,22 @@
+{
+  "_comment": "Configuration for Go project proto skill (buf + Connect RPC + gRPC-Gateway)",
+  "buf": {
+    "proto_dir": "proto",
+    "gen_dir": "proto/gen",
+    "deps": [
+      "buf.build/googleapis/googleapis"
+    ]
+  },
+  "plugins": {
+    "go": "buf.build/protocolbuffers/go",
+    "grpc": "buf.build/grpc/go",
+    "connect": "buf.build/connectrpc/go",
+    "gateway": "buf.build/grpc-ecosystem/gateway",
+    "openapi": "buf.build/community/google-gnostic-openapi",
+    "typescript": "buf.build/bufbuild/es"
+  },
+  "package": {
+    "name": "memos.api.v1",
+    "go_package": "gen/api/v1"
+  }
+}

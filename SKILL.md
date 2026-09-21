@@ -1,291 +1,208 @@
 ---
 name: go-project-proto-skill
-description: Protocol buffer configuration for Connect RPC + gRPC-Gateway using buf, including plugins, imports, annotations, and code generation
+description: >-
+  Protocol buffer configuration for Connect RPC + gRPC-Gateway using buf,
+  including plugins, imports, annotations, and code generation. Activate when
+  creating proto definitions, generating Go code from protos, configuring buf
+  plugins, adding gRPC-Gateway HTTP annotations, or defining protobuf services
+  and messages for the Go project (memos).
+license: MIT
+metadata:
+  author: pix
+  version: 1.0.0
+  created: 2025-09-20
+  last_reviewed: 2025-09-20
+  review_interval_days: 180
+  dependencies:
+    - url: https://buf.build
+      name: buf CLI
+      type: cli
 ---
 
 # Protocol Buffer Configuration (buf)
 
-## ⚠️ CRITICAL: Proto Files Must Be Created First
+## When to Use This Skill
 
-**Before creating any server code, you MUST create proto definitions!**
+Activate when the user asks to:
+- Create new `.proto` service or message definitions
+- Generate Go code from protobuf definitions
+- Configure `buf.yaml` or `buf.gen.yaml`
+- Add gRPC-Gateway HTTP annotations to services
+- Run `buf generate`, `buf lint`, or `buf breaking`
+- Define protobuf messages with `google.api.resource` annotations
+- Set up buf dependencies (`buf dep update`)
+
+**Does NOT activate for**: writing Go server implementations (→ go-project-server), database models (→ go-project-store), or general Go conventions (→ go-project-conventions).
+
+## Data Source
+
+This skill is a **configuration reference** — it defines patterns and conventions for protobuf files in the project. No external API is called. The data source is the project's own `proto/` directory.
+
+See `references/buf-plugins.md` for the complete buf plugin inventory and `references/proto-patterns.md` for extended message patterns.
+
+## Workflows
+
+### Workflow 1: Create a New Proto Service
+
+1. **Create directory structure**
+   ```bash
+   mkdir -p proto/api/v1
+   ```
+
+2. **Create buf configuration files** (if not already present)
+   ```bash
+   touch proto/buf.yaml
+   touch proto/buf.gen.yaml
+   ```
+
+3. **Write the service definition** in `proto/api/v1/{name}_service.proto`
+   - Use `syntax = "proto3"`
+   - Package: `memos.api.v1`
+   - Import `google/api/annotations.proto` for HTTP bindings
+   - Add `google.api.http` options to each RPC method
+
+4. **Generate code**
+   ```bash
+   cd proto && buf generate
+   ```
+
+5. **Verify generated output** in `gen/api/v1/`
+   - `*_pb.go` — Protobuf messages
+   - `*_connect.go` — Connect RPC handlers
+   - `*_grpc.go` — gRPC stubs
+   - `openapi.yaml` — OpenAPI spec
+
+### Workflow 2: Add buf Dependencies
 
 ```bash
-# 1. Create proto directory
-mkdir -p proto/api/v1
-
-# 2. Create buf configuration files
-touch proto/buf.yaml
-touch proto/buf.gen.yaml
-
-# 3. Create service definition
-touch proto/api/v1/auth_service.proto
-
-# 4. Generate Go code
-cd proto && buf generate
+cd proto && buf dep update
 ```
 
-**Without proto files, server implementations cannot import generated types and will fail to compile!**
+This populates `buf.lock` with resolved dependency versions.
 
-## Directory Structure
+### Workflow 3: Lint and Check Breaking Changes
 
-```
-proto/
-├── buf.gen.yaml                    # Code generation configuration
-├── buf.yaml                        # Lint and breaking change rules
-├── buf.lock                        # Dependency lock file (auto-generated)
-├── api/v1/                         # API service definitions
-│   ├── auth_service.proto
-│   ├── user_service.proto
-│   ├── memo_service.proto
-│   └── common.proto                # Shared enums
-└── gen/                            # Generated code (auto-generated)
-    ├── api/v1/
-    │   ├── *_pb.go                # Protobuf messages
-    │   ├── *_connect.go           # Connect RPC handlers
-    │   ├── *_grpc.go              # gRPC stubs
-    │   └── openapi.yaml           # OpenAPI spec
+```bash
+# Lint proto files
+cd proto && buf lint
+
+# Check breaking changes against main branch
+cd proto && buf breaking --against .git#main
 ```
 
-## buf.gen.yaml - Code Generation
+## Available Scripts
 
-```yaml
-version: v2
-managed:
-  enabled: true
-  disable:
-    - file_option: go_package
-      module: buf.build/googleapis/googleapis
-  override:
-    - file_option: go_package_prefix
-      value: github.com/usememos/memos/proto/gen
+No Python scripts — this is a pure configuration skill. All operations use `buf` CLI commands directly.
 
-plugins:
-  - remote: buf.build/protocolbuffers/go
-    out: gen
-    opt: paths=source_relative
+## Available Analyses
 
-  - remote: buf.build/grpc/go
-    out: gen
-    opt: paths=source_relative
+### Service Definition Pattern
 
-  - remote: buf.build/connectrpc/go
-    out: gen
-    opt: paths=source_relative
+Each service file follows this structure:
+- **Imports**: `google/api/annotations.proto`, `google/api/field_behavior.proto`, `google/api/resource.proto`
+- **RPC methods**: Annotated with `google.api.http` for RESTful HTTP mapping
+- **Method signatures**: Documented with `google.api.method_signature`
 
-  - remote: buf.build/grpc-ecosystem/gateway
-    out: gen
-    opt: paths=source_relative
+### Resource Definition Pattern
 
-  - remote: buf.build/community/google-gnostic-openapi
-    out: gen
-    opt: enum_type=string
-
-  - remote: buf.build/bufbuild/es
-    out: ../web/src/types/proto
-    opt: target=ts
-    include_imports: true
-```
-
-## buf.yaml - Lint and Breaking Changes
-
-```yaml
-version: v2
-deps:
-  - buf.build/googleapis/googleapis
-
-lint:
-  use:
-    - BASIC
-  except:
-    - ENUM_VALUE_PREFIX
-    - FIELD_NOT_REQUIRED
-    - PACKAGE_DIRECTORY_MATCH
-    - PACKAGE_NO_IMPORT_CYCLE
-    - PACKAGE_VERSION_SUFFIX
-  disallow_comment_ignores: true
-
-breaking:
-  use:
-    - FILE
-  except:
-    - EXTENSION_NO_DELETE
-    - FIELD_SAME_DEFAULT
-```
-
-## Service Definition Pattern
-
+Resources use `google.api.resource` for REST naming:
 ```protobuf
-syntax = "proto3";
-
-package memos.api.v1;
-
-import "google/api/annotations.proto";
-import "google/api/client.proto";
-import "google/api/field_behavior.proto";
-import "google/api/resource.proto";
-import "google/protobuf/empty.proto";
-import "google/protobuf/timestamp.proto";
-
-option go_package = "gen/api/v1";
-
-service MemoService {
-  rpc CreateMemo(CreateMemoRequest) returns (Memo) {
-    option (google.api.http) = {
-      post: "/api/v1/memos"
-      body: "memo"
-    };
-    option (google.api.method_signature) = "memo";
-  }
-
-  rpc ListMemos(ListMemosRequest) returns (ListMemosResponse) {
-    option (google.api.http) = {get: "/api/v1/memos"};
-    option (google.api.method_signature) = "";
-  }
-
-  rpc GetMemo(GetMemoRequest) returns (Memo) {
-    option (google.api.http) = {get: "/api/v1/{name=memos/*}"};
-    option (google.api.method_signature) = "name";
-  }
-
-  rpc UpdateMemo(UpdateMemoRequest) returns (Memo) {
-    option (google.api.http) = {
-      patch: "/api/v1/{memo.name=memos/*}"
-      body: "memo"
-    };
-    option (google.api.method_signature) = "memo,update_mask";
-  }
-
-  rpc DeleteMemo(DeleteMemoRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/api/v1/{name=memos/*}"};
-    option (google.api.method_signature) = "name";
-  }
-}
+option (google.api.resource) = {
+  type: "memos.api.v1/Memo"
+  pattern: "memos/{memo}"
+  name_field: "name"
+};
 ```
 
-## Resource Definition Pattern
-
-```protobuf
-message Memo {
-  option (google.api.resource) = {
-    type: "memos.api.v1/Memo"
-    pattern: "memos/{memo}"
-    name_field: "name"
-    singular: "memo"
-    plural: "memos"
-  };
-
-  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
-
-  State state = 2 [(google.api.field_behavior) = REQUIRED];
-
-  string creator = 3 [
-    (google.api.field_behavior) = OUTPUT_ONLY,
-    (google.api.resource_reference) = {type: "memos.api.v1/User"}
-  ];
-
-  google.protobuf.Timestamp create_time = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  string content = 7 [(google.api.field_behavior) = REQUIRED];
-}
-
-enum State {
-  STATE_UNSPECIFIED = 0;
-  NORMAL = 1;
-  ARCHIVED = 2;
-}
-```
-
-## Request/Response Messages
-
-```protobuf
-message ListMemosRequest {
-  int32 page_size = 1 [(google.api.field_behavior) = OPTIONAL];
-  string page_token = 2 [(google.api.field_behavior) = OPTIONAL];
-  string order_by = 4 [(google.api.field_behavior) = OPTIONAL];
-  string filter = 5 [(google.api.field_behavior) = OPTIONAL];
-}
-
-message ListMemosResponse {
-  repeated Memo memos = 1;
-  string next_page_token = 2;
-}
-```
-
-## Field Behavior Annotations
+### Field Behavior Annotations
 
 | Annotation | Usage |
-| ------------ | ------- |
+|---|---|
 | `REQUIRED` | Field is required |
 | `OPTIONAL` | Field is optional |
 | `OUTPUT_ONLY` | Field is server-generated |
 | `IDENTIFIER` | Field is the resource identifier |
 
-## Common Types
+## Error Handling
 
+- **Missing proto files**: Server implementations cannot import generated types and will fail to compile. Always create proto definitions first.
+- **buf generate fails**: Check `buf.yaml` deps are resolved (`buf dep update`) and `buf.gen.yaml` plugins are accessible.
+- **Lint errors**: Run `buf lint` to see specific violations. Common fixes: add `STATE_UNSPECIFIED = 0` as first enum value, use `google.api.field_behavior` annotations.
+
+## Gotchas
+
+- **Proto files must be created before server code.** Without generated Go types, server implementations will not compile. The dependency chain is: proto → generate → store → server.
+- **`go_package` must be set** in each `.proto` file via `option go_package = "gen/api/v1"`. Without it, `buf generate` produces code in the wrong import path.
+- **The `buf.gen.yaml` remote plugins** require network access on first run. If behind a firewall, pre-cache plugins or use local plugin binaries.
+- **gRPC-Gateway annotations** require `google/api/annotations.proto` in deps. The `buf.yaml` already declares `buf.build/googleapis/googleapis` — do not duplicate it.
+- **Enum first value must be 0** per protobuf spec. Always start enums with `*_UNSPECIFIED = 0`.
+- **Generated code lives in `gen/`** which is gitignored. Run `buf generate` after cloning or pulling.
+
+## Keywords for Detection
+
+**Entities**: proto, protobuf, buf, gRPC, Connect RPC, gRPC-Gateway, OpenAPI
+**Metrics**: code generation, lint, breaking changes, HTTP annotations
+**Actions**: generate, lint, define, annotate, configure, create proto
+
+**Activation examples:**
+- "Create a new proto service for user management"
+- "Add gRPC-Gateway HTTP annotations to the memo service"
+- "Run buf generate to regenerate Go code"
+- "Configure buf.gen.yaml with new plugins"
+
+**Does NOT activate for:**
+- Writing Go server handler implementations
+- Defining database store interfaces
+- General Go code style questions
+
+## Usage Examples
+
+### Example 1: Create MemoService Proto
+
+**Question**: "Create a proto definition for a MemoService with CRUD operations"
+
+**Generated proto** (`proto/api/v1/memo_service.proto`):
 ```protobuf
-// common.proto
 syntax = "proto3";
 package memos.api.v1;
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
 option go_package = "gen/api/v1";
 
-enum State {
-  STATE_UNSPECIFIED = 0;
-  NORMAL = 1;
-  ARCHIVED = 2;
+service MemoService {
+  rpc CreateMemo(CreateMemoRequest) returns (Memo) {
+    option (google.api.http) = { post: "/api/v1/memos" body: "memo" };
+    option (google.api.method_signature) = "memo";
+  }
+  rpc GetMemo(GetMemoRequest) returns (Memo) {
+    option (google.api.http) = { get: "/api/v1/{name=memos/*}" };
+    option (google.api.method_signature) = "name";
+  }
 }
-
-message PageToken {
-  int32 limit = 1;
-  int32 offset = 2;
-}
 ```
 
-## Commands
+**Then run**: `cd proto && buf generate`
 
-```bash
-# Install dependencies
-cd proto && buf dep update
+### Example 2: Add a New Dependency
 
-# Generate code
-cd proto && buf generate
+**Question**: "I need to import the `google/api/field_behavior.proto` annotations"
 
-# Lint proto files
-cd proto && buf lint
+**Check**: Already declared in `buf.yaml` deps (`buf.build/googleapis/googleapis`). Just add the import in your `.proto` file.
 
-# Check breaking changes
-cd proto && buf breaking --against .git#main
-```
+### Example 3: Lint Proto Files
 
-## Generated Output
+**Question**: "Check if my proto files pass lint"
 
-```
-gen/
-└── api/v1/
-    ├── auth_service.pb.go
-    ├── auth_service.connect.go
-    ├── auth_service_grpc.go
-    ├── memo_service.pb.go
-    ├── memo_service.connect.go
-    └── openapi.yaml
-```
+**Command**: `cd proto && buf lint`
 
-**Import path:**
+**Fix common errors**:
+- `ENUM_VALUE_PREFIX` — prefix enum values with `ENUM_NAME_`
+- First enum value must be `0`
 
-```go
-import v1pb "github.com/usememos/memos/gen/api/v1"
-```
+## References
 
-## Best Practices
-
-1. **One service per file**: `*_service.proto`
-2. **Shared types**: Use `common.proto` for enums
-3. **Resource patterns**: Use `google.api.resource` for REST resources
-4. **Field behavior**: Always annotate REQUIRED/OUTPUT_ONLY/OPTIONAL
-5. **Method signature**: Document with `google.api.method_signature`
-6. **RESTful HTTP paths**: HTTP paths in proto annotations must comply with RESTful API conventions, using appropriate HTTP methods and resource-based URLs
-
-## Related Skills
-
-- [go-project-server](../go-project-server/) - Server implementation with dual protocol
-- [go-project-store](../go-project-store/) - Database models
-- [go-project-conventions](../go-project-conventions/) - Code conventions
+| File | When to read it |
+|---|---|
+| `references/buf-plugins.md` | Complete list of buf plugins and their purpose |
+| `references/proto-patterns.md` | Extended message patterns, pagination, resource references |
+| `references/troubleshooting.md` | Common buf errors and fixes |
